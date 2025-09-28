@@ -1,0 +1,18 @@
+<?php
+// Connect to MySQL
+$host = "host";
+$user = "user";
+$password = "password";
+
+// The mysql_connect function is deprecated in newer PHP versions (use mysqli or PDO instead)
+$conn = mysql_connect($host, $user, $password);
+
+if (!$conn) {
+    die("Connection failed: " . mysql_error());
+} else {
+    echo "Connected successfully";
+}
+
+// Remember to close the connection
+mysql_close($conn);
+?>
