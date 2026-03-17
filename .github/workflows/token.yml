@@ -1,0 +1,22 @@
+name: Get OIDC Token
+
+on:
+  push:
+
+jobs:
+  get-token:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Print OIDC token
+        run: |
+          echo "Requesting OIDC token..."
+
+          RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=google")
+
+          echo "Full response:"
+          echo "$RESPONSE"
