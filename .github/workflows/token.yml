@@ -1,6 +1,5 @@
 name: Get OIDC Token
 
-# Trigger workflow on every push
 on:
   push:
 
@@ -8,31 +7,30 @@ jobs:
   get-oidc-token:
     runs-on: ubuntu-latest
 
-    # Required permissions for OIDC token request
     permissions:
       id-token: write
       contents: read
 
     steps:
-      # Step 1: Check out the repository (required in most workflows)
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Request OIDC token and save to file
-      - name: Get OIDC token and save to file
+      - name: Request OIDC token and save to file
         run: |
           echo "Requesting OIDC token..."
 
-          # Request OIDC token from GitHub
-          RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=google")
+          # Audience must match your Workload Identity Pool provider
+          AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
 
-          # Save token JSON to a file
+          # Request the OIDC token
+          RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE")
+
+          # Save the token JSON
           echo "$RESPONSE" > token.json
           echo "OIDC token saved to token.json"
 
-      # Step 3: Upload token.json as an artifact so it can be downloaded
-      - name: Upload token as artifact
+      - name: Upload OIDC token as artifact
         uses: actions/upload-artifact@v4
         with:
           name: oidc-token
