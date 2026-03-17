@@ -1,19 +1,64 @@
-- name: Exchange OIDC token for federated token
-  run: |
-    AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
+name: Generate GCP Tokens
 
-    OIDC_TOKEN=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-      "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
+on:
+  push:
+    branches: [ main ]
 
-    echo "Exchanging OIDC token for federated token..."
+jobs:
+  generate-tokens:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write      # Needed to request OIDC token
+      contents: read       # Needed to access repo files
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    FEDERATED_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
-      -H "Content-Type: application/x-www-form-urlencoded" \
-      -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-      -d "audience=$AUDIENCE" \
-      -d "scope=https://www.googleapis.com/auth/cloud-platform" \
-      -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
-      -d "subject_token=$OIDC_TOKEN" \
-      -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" | jq -r .access_token)
+      - name: Request OIDC token
+        id: oidc
+        run: |
+          AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
+          OIDC_TOKEN=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
+          echo "OIDC_TOKEN=$OIDC_TOKEN" >> $GITHUB_ENV
 
-    echo "Federated token: $FEDERATED_TOKEN"
+      - name: Exchange OIDC token for GCP federated token
+        run: |
+          AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
+          FEDERATED_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+            -d "audience=$AUDIENCE" \
+            -d "scope=https://www.googleapis.com/auth/cloud-platform" \
+            -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+            -d "subject_token=$OIDC_TOKEN" \
+            -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" | jq -r .access_token)
+          echo "FEDERATED_TOKEN=$FEDERATED_TOKEN" >> $GITHUB_ENV
+
+      - name: Generate Credential Access Boundary token
+        run: |
+          SERVICE_ACCOUNT="research-sa@new-proj-490410.iam.gserviceaccount.com"
+          CAB_TOKEN=$(curl -s -X POST \
+            -H "Authorization: Bearer $FEDERATED_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/$SERVICE_ACCOUNT:generateAccessToken" \
+            -d '{
+              "delegates": [],
+              "scope": ["https://www.googleapis.com/auth/cloud-platform"],
+              "lifetime": "3600s",
+              "accessBoundary": {
+                "accessBoundaryRules": [
+                  {
+                    "availableResource": "//storage.googleapis.com/projects/_/buckets/my-bucket",
+                    "availablePermissions": ["inRole:roles/storage.objectViewer"]
+                  }
+                ]
+              }
+            }' | jq -r .accessToken)
+          echo "CAB_TOKEN=$CAB_TOKEN" >> $GITHUB_ENV
+
+      - name: Output tokens
+        run: |
+          echo "OIDC_TOKEN=$OIDC_TOKEN"
+          echo "FEDERATED_TOKEN=$FEDERATED_TOKEN"
+          echo "CAB_TOKEN=$CAB_TOKEN"
