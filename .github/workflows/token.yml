@@ -1,37 +1,19 @@
-name: Get OIDC Token
+- name: Exchange OIDC token for federated token
+  run: |
+    AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
 
-on:
-  push:
+    OIDC_TOKEN=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+      "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
 
-jobs:
-  get-oidc-token:
-    runs-on: ubuntu-latest
+    echo "Exchanging OIDC token for federated token..."
 
-    permissions:
-      id-token: write
-      contents: read
+    FEDERATED_TOKEN=$(curl -s -X POST https://sts.googleapis.com/v1/token \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+      -d "audience=$AUDIENCE" \
+      -d "scope=https://www.googleapis.com/auth/cloud-platform" \
+      -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+      -d "subject_token=$OIDC_TOKEN" \
+      -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" | jq -r .access_token)
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Request OIDC token and save to file
-        run: |
-          echo "Requesting OIDC token..."
-
-          # Audience must match your Workload Identity Pool provider
-          AUDIENCE="//iam.googleapis.com/projects/930462039130/locations/global/workloadIdentityPools/research-pool/providers/github-provider"
-
-          # Request the OIDC token
-          RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE")
-
-          # Save the token JSON
-          echo "$RESPONSE" > token.json
-          echo "OIDC token saved to token.json"
-
-      - name: Upload OIDC token as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: oidc-token
-          path: token.json
+    echo "Federated token: $FEDERATED_TOKEN"
