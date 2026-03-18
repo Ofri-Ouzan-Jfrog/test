@@ -1,4 +1,4 @@
-name: Generate GCP Tokens
+name: Generate GCP Tokens 1
 
 on:
   push:
